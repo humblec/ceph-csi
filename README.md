@@ -1,4 +1,4 @@
-# Ceph CSI 1.0.0
+# Ceph CSI
 
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/ceph/ceph-csi)](https://goreportcard.com/report/github.com/ceph/ceph-csi)
