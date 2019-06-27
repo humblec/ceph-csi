@@ -309,6 +309,80 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
+func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+
+	var err error
+	targetPath := req.GetVolumePath()
+	if targetPath == "" {
+		err = fmt.Errorf("targetpath %v is empty", targetPath)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	volId := req.GetVolumeId()
+
+	isMnt, err := isMountPoint(targetPath)
+
+	if err != nil {
+		klog.Errorf("stat failed on path: %v, error: %v", targetPath, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if isMnt {
+		klog.Infof("cephfs: volume %s is already mounted to %s", volId, targetPath)
+		cephfsProvider := NewcephfsStatFS(targetPath)
+		volMetrics, volMetErr := cephfsProvider.GetMetrics()
+		if volMetErr != nil {
+			return nil, status.Error(codes.Internal, volMetErr.Error())
+		}
+
+		available, ok := (*(volMetrics.Available)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch available bytes")
+		}
+		capacity, ok := (*(volMetrics.Capacity)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch capacity bytes")
+		}
+		used, ok := (*(volMetrics.Used)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch used bytes")
+		}
+		inodes, ok := (*(volMetrics.Inodes)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch available inodes")
+		}
+		inodesFree, ok := (*(volMetrics.InodesFree)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch free inodes")
+		}
+
+		inodesUsed, ok := (*(volMetrics.InodesUsed)).AsInt64()
+		if !ok {
+			klog.Errorf("failed to fetch used inodes")
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Available: available,
+					Total:     capacity,
+					Used:      used,
+					Unit:      1,
+				},
+				{
+					Available: inodesFree,
+					Total:     inodes,
+					Used:      inodesUsed,
+					Unit:      2,
+				},
+			},
+		}, nil
+
+	}
+
+	klog.Infof("cephfs: successfully got stats for volume %s to %s", volId, targetPath)
+
+	return &csi.NodeGetVolumeStatsResponse{}, nil
+}
+
 // NodeGetCapabilities returns the supported capabilities of the node server
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	return &csi.NodeGetCapabilitiesResponse{
@@ -317,6 +391,13 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
 						Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+					},
+				},
+			},
+			{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 					},
 				},
 			},
