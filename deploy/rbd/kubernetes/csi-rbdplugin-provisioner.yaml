@@ -41,6 +41,7 @@ spec:
             - "--enable-leader-election=true"
             - "--leader-election-type=leases"
             - "--feature-gates=Topology=true"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: unix:///csi/csi-provisioner.sock
