@@ -51,12 +51,33 @@ func getVolumeNotFoundErrorString(volID volumeID) string {
 	return fmt.Sprintf("Error ENOENT: Subvolume '%s' not found", string(volID))
 }
 
-func getVolumeRootPathCeph(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) (string, error) {
-	stdout, stderr, err := util.ExecCommand(
+type Subvolume struct {
+	Atime         string   `json:"atime"`
+	BytesPcent    string   `json:"bytes_pcent"`
+	BytesQuota    int      `json:"bytes_quota"`
+	BytesUsed     int      `json:"bytes_used"`
+	CreatedAt     string   `json:"created_at"`
+	Ctime         string   `json:"ctime"`
+	DataPool      string   `json:"data_pool"`
+	Gid           int      `json:"gid"`
+	Mode          int      `json:"mode"`
+	MonAddrs      []string `json:"mon_addrs"`
+	Mtime         string   `json:"mtime"`
+	Path          string   `json:"path"`
+	PoolNamespace string   `json:"pool_namespace"`
+	Type          string   `json:"type"`
+	UID           int      `json:"uid"`
+}
+
+func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) (Subvolume, error) {
+	info := Subvolume{}
+	err := execCommandJSON(
+		ctx,
+		&info,
 		"ceph",
 		"fs",
 		"subvolume",
-		"getpath",
+		"info",
 		volOptions.FsName,
 		string(volID),
 		"--group_name",
@@ -67,15 +88,14 @@ func getVolumeRootPathCeph(ctx context.Context, volOptions *volumeOptions, cr *u
 		"--keyfile="+cr.KeyFile)
 
 	if err != nil {
-		klog.Errorf(util.Log(ctx, "failed to get the rootpath for the vol %s(%s)"), string(volID), err)
-
-		if strings.Contains(string(stderr), getVolumeNotFoundErrorString(volID)) {
-			return "", ErrVolumeNotFound{err}
+		klog.Errorf(util.Log(ctx, "failed to get subvolume info for the vol %s(%s)"), string(volID), err)
+		if strings.Contains(err.Error(), getVolumeNotFoundErrorString(volID)) {
+			return info, ErrVolumeNotFound{err}
 		}
 
-		return "", err
+		return info, err
 	}
-	return strings.TrimSuffix(string(stdout), "\n"), nil
+	return info, nil
 }
 
 type localClusterState struct {
