@@ -31,6 +31,18 @@ rules:
     resources: ["volumeattachments"]
     verbs: ["get", "list", "watch", "update", "patch"]
 {{- end -}}
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents/status"]
+    verbs: ["update"]
 {{- if semverCompare ">=1.15" .Capabilities.KubeVersion.GitVersion -}}
 {{- if .Values.provisioner.resizer.enabled }}
   - apiGroups: [""]
