@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ceph/ceph-csi/internal/util"
+
 	"github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -320,7 +321,7 @@ func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVo
 
 	tm := time.Time{}
 	layout := "2006-01-02 15:04:05.000000"
-	// TODO currently paring of timestamp to time.ANSIC generate from ceph fs is failng
+	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
 	tm, err = time.Parse(layout, snapInfo.CreatedAt)
 	if err != nil {
 		return nil, err

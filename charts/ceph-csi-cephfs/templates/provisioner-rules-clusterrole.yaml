@@ -26,11 +26,6 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
-{{- if .Values.provisioner.attacher.enabled }}
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["volumeattachments"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-{{- end -}}
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshots"]
     verbs: ["get", "list"]
@@ -43,6 +38,11 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents/status"]
     verbs: ["update"]
+{{- if .Values.provisioner.attacher.enabled }}
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+{{- end -}}
 {{- if semverCompare ">=1.15" .Capabilities.KubeVersion.GitVersion -}}
 {{- if .Values.provisioner.resizer.enabled }}
   - apiGroups: [""]
