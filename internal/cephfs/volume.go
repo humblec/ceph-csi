@@ -51,6 +51,24 @@ func getVolumeNotFoundErrorString(volID volumeID) string {
 	return fmt.Sprintf("Error ENOENT: Subvolume '%s' not found", string(volID))
 }
 
+type Subvolume struct {
+	Atime         string   `json:"atime"`
+	BytesPcent    string   `json:"bytes_pcent"`
+	BytesQuota    int      `json:"bytes_quota"`
+	BytesUsed     int      `json:"bytes_used"`
+	CreatedAt     string   `json:"created_at"`
+	Ctime         string   `json:"ctime"`
+	DataPool      string   `json:"data_pool"`
+	Gid           int      `json:"gid"`
+	Mode          int      `json:"mode"`
+	MonAddrs      []string `json:"mon_addrs"`
+	Mtime         string   `json:"mtime"`
+	Path          string   `json:"path"`
+	PoolNamespace string   `json:"pool_namespace"`
+	Type          string   `json:"type"`
+	UID           int      `json:"uid"`
+}
+
 func getVolumeRootPathCeph(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) (string, error) {
 	stdout, stderr, err := util.ExecCommand(
 		"ceph",
@@ -76,6 +94,39 @@ func getVolumeRootPathCeph(ctx context.Context, volOptions *volumeOptions, cr *u
 		return "", err
 	}
 	return strings.TrimSuffix(string(stdout), "\n"), nil
+}
+
+func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) (Subvolume, error) {
+	info := Subvolume{}
+	err := execCommandJSON(
+		ctx,
+		&info,
+		"ceph",
+		"fs",
+		"subvolume",
+		"info",
+		volOptions.FsName,
+		string(volID),
+		"--group_name",
+		volOptions.SubvolumeGroup,
+		"-m", volOptions.Monitors,
+		"-c", util.CephConfigPath,
+		"-n", cephEntityClientPrefix+cr.ID,
+		"--keyfile="+cr.KeyFile)
+
+	if err != nil {
+		klog.Errorf(util.Log(ctx, "failed to get subvolume info for the vol %s(%s)"), string(volID), err)
+		if strings.Contains(err.Error(), getVolumeNotFoundErrorString(volID)) {
+			return info, ErrVolumeNotFound{err}
+		}
+		// Incase the error is other than invalid command return error to the caller.
+		if !strings.Contains(err.Error(), inValidCommmand) {
+			return info, InvalidCommand{err: err}
+		}
+
+		return info, err
+	}
+	return info, nil
 }
 
 type localClusterState struct {
