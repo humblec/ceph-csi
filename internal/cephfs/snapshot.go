@@ -39,7 +39,7 @@ func snapshotNotProtectedErrorString(snapName string) string {
 	return fmt.Sprintf("Error EEXIST: snapshot '%s' is not protected", snapName)
 }
 
-func createSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) error {
+func createSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID, snapID snapshotID) error {
 	args := []string{
 		"fs",
 		"subvolume",
@@ -47,7 +47,7 @@ func createSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 		"create",
 		volOptions.FsName,
 		string(volID),
-		volOptions.SnapshotName,
+		string(snapID),
 		"--group_name",
 		volOptions.SubvolumeGroup,
 		"-m", volOptions.Monitors,
@@ -67,7 +67,7 @@ func createSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 	return nil
 }
 
-func deleteSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID) error {
+func deleteSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID, snapID snapshotID) error {
 	args := []string{
 		"fs",
 		"subvolume",
@@ -75,7 +75,7 @@ func deleteSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 		"rm",
 		volOptions.FsName,
 		string(volID),
-		volOptions.SnapshotName,
+		string(snapID),
 		"--group_name",
 		volOptions.SubvolumeGroup,
 		"-m", volOptions.Monitors,
@@ -97,9 +97,9 @@ func deleteSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 }
 
 type snapshotInfo struct {
-	CreatedAt        string `json:"created_at"`
-	CreationTime     *timestamp.Timestamp
-	ID               string
+	CreatedAt    string `json:"created_at"`
+	CreationTime *timestamp.Timestamp
+	//ID               string
 	Name             string
 	DataPool         string `json:"data_pool"`
 	HasPendingClones string `json:"has_pending_clones"`

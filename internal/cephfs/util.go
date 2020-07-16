@@ -31,6 +31,7 @@ import (
 )
 
 type volumeID string
+type snapshotID string
 
 func execCommand(ctx context.Context, program string, args ...string) (stdout, stderr []byte, err error) {
 	var (

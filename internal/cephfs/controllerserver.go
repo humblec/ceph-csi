@@ -88,7 +88,7 @@ func (cs *ControllerServer) createBackingVolume(
 				}
 				return status.Error(codes.Internal, snapOpterr.Error())
 			}
-			_, err = checkSnapExists(ctx, snapOpt, sid.FsSubVolumeName, req.GetSecrets())
+			_, _, err = checkSnapExists(ctx, snapOpt, sid.FsSubVolumeName, req.GetSecrets())
 			if err != nil {
 				if errors.As(err, &snof) {
 					return status.Error(codes.NotFound, err.Error())
@@ -456,7 +456,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 	volOptions.RequestName = req.GetName()
 	// Reservation
-	snapInfo, err := checkSnapExists(ctx, volOptions, vid.FsSubvolName, req.GetSecrets())
+	snapInfo, snapIdfr, err := checkSnapExists(ctx, volOptions, vid.FsSubvolName, req.GetSecrets())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -464,7 +464,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		return &csi.CreateSnapshotResponse{
 			Snapshot: &csi.Snapshot{
 				SizeBytes:      volOptions.Size,
-				SnapshotId:     snapInfo.ID,
+				SnapshotId:     snapIdfr.SnapshotID,
 				SourceVolumeId: req.GetSourceVolumeId(),
 				CreationTime:   snapInfo.CreationTime,
 				ReadyToUse:     true,
@@ -526,6 +526,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 func doSnapshot(ctx context.Context, subvolumeName string, volOpt *volumeOptions, secret map[string]string) (snapshotInfo, error) {
 	volID := volumeID(subvolumeName)
+	snapshotID := snapshotID(volOpt.SnapshotName)
 	snap := snapshotInfo{}
 	cr, err := util.NewAdminCredentials(secret)
 	if err != nil {
@@ -533,14 +534,14 @@ func doSnapshot(ctx context.Context, subvolumeName string, volOpt *volumeOptions
 	}
 	defer cr.DeleteCredentials()
 
-	err = createSnapshot(ctx, volOpt, cr, volID)
+	err = createSnapshot(ctx, volOpt, cr, volID, snapshotID)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to create snapshot %s %v"), volOpt.SnapshotName, err)
 		return snap, err
 	}
 	defer func() {
 		if err != nil {
-			dErr := deleteSnapshot(ctx, volOpt, cr, volID)
+			dErr := deleteSnapshot(ctx, volOpt, cr, volID, snapshotID)
 			if dErr != nil {
 				klog.Errorf(util.Log(ctx, "failed to delete snapshot %s %v"), volOpt.SnapshotName, err)
 			}
@@ -653,10 +654,12 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	err = deleteSnapshot(ctx, volOpt, cr, volumeID(sid.FsSubVolumeName))
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
+
+	// TODO: validate snapshotID arg
+	// err = deleteSnapshot(ctx, volOpt, cr, volumeID(sid.FsSubVolumeName), snapshotID(volOpt.SnapshotName))
+	// if err != nil {
+	//	return nil, status.Error(codes.Internal, err.Error())
+	// }
 	err = undoSnapReservation(ctx, volOpt, *sid, req.GetSecrets())
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to remove reservation for snapname (%s) with backing snap (%s) (%s)"),

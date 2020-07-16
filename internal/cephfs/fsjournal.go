@@ -58,26 +58,26 @@ because, the order of omap creation and deletion are inverse of each other, and 
 request name lock, and hence any stale omaps are leftovers from incomplete transactions and are
 hence safe to garbage collect.
 */
-func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVolName string, secret map[string]string) (*snapshotInfo, error) {
+func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVolName string, secret map[string]string) (*snapshotInfo, *snapshotIdentifier, error) {
 	cr, err := util.NewAdminCredentials(secret)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer cr.DeleteCredentials()
 
 	j, err := snapJournal.Connect(volOptions.Monitors, cr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer j.Destroy()
 
 	snapData, err := j.CheckReservation(
 		ctx, volOptions.MetadataPool, volOptions.RequestName, volOptions.NamePrefix, parentSubVolName, "")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if snapData == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	snapUUID := snapData.ImageUUID
 	volOptions.SnapshotName = snapData.ImageAttributes.ImageName
@@ -87,9 +87,9 @@ func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVo
 		if errors.As(err, &evnf) {
 			err = j.UndoReservation(ctx, volOptions.MetadataPool,
 				volOptions.MetadataPool, snapData.ImageAttributes.ImageName, volOptions.RequestName)
-			return nil, err
+			return nil, nil, err
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	var tm time.Time
@@ -97,30 +97,35 @@ func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVo
 	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
 	tm, err = time.Parse(layout, snapInfo.CreatedAt)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	snapInfo.CreationTime, err = ptypes.TimestampProto(tm)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if snapInfo.Protected == "no" {
 		err = protectSnapshot(ctx, volOptions, cr, volumeID(parentSubVolName))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
+
 	// found a snapshot already available, process and return it!
-	snapInfo.ID, err = util.GenerateVolID(ctx, volOptions.Monitors, cr, volOptions.FscID,
+	snapID, volIDErr := util.GenerateVolID(ctx, volOptions.Monitors, cr, volOptions.FscID,
 		"", volOptions.ClusterID, snapUUID, volIDVersion)
-	if err != nil {
-		return nil, err
+	if volIDErr != nil {
+		return nil, nil, volIDErr
 	}
 
+	snapIdfr := snapshotIdentifier{
+		FsSnapshotName:  snapInfo.Name,
+		SnapshotID:      snapID,
+		FsSubVolumeName: parentSubVolName}
 	util.DebugLog(ctx, "Found existing snapshot (%s) with subvolume name (%s) for request (%s)",
 		snapInfo.Name, parentSubVolName, volOptions.RequestName)
 
-	return &snapInfo, nil
+	return &snapInfo, &snapIdfr, nil
 }
 
 /*
