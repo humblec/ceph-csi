@@ -466,7 +466,6 @@ func newSnapshotOptionsFromID(ctx context.Context, snapID string, cr *util.Crede
 	volOptions.SnapshotName = imageAttributes.ImageName
 	sid.FsSubVolumeName = imageAttributes.SourceName
 
-	fmt.Printf("the image attributres stored on for the snapshots are %+v\n", imageAttributes)
 	_, err = getSnapshotInfo(ctx, &volOptions, cr, volumeID(sid.FsSubVolumeName))
 	if err != nil {
 		return &volOptions, &sid, err

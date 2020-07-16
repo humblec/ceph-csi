@@ -45,6 +45,85 @@ type snapshotIdentifier struct {
 }
 
 /*
+checkSnapExists checks to determine if passed in RequestName in volOptions exists on the backend.
+
+**NOTE:** These functions manipulate the rados omaps that hold information regarding
+volume names as requested by the CSI drivers. Hence, these need to be invoked only when the
+respective CSI driver generated volume name based locks are held, as otherwise racy
+access to these omaps may end up leaving them in an inconsistent state.
+
+These functions also cleanup omap reservations that are stale. I.e when omap entries exist and
+backing subvolumes are missing, or one of the omaps exist and the next is missing. This is
+because, the order of omap creation and deletion are inverse of each other, and protected by the
+request name lock, and hence any stale omaps are leftovers from incomplete transactions and are
+hence safe to garbage collect.
+*/
+func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVolName string, secret map[string]string) (*snapshotInfo, error) {
+	cr, err := util.NewAdminCredentials(secret)
+	if err != nil {
+		return nil, err
+	}
+	defer cr.DeleteCredentials()
+
+	j, err := snapJournal.Connect(volOptions.Monitors, cr)
+	if err != nil {
+		return nil, err
+	}
+	defer j.Destroy()
+
+	snapData, err := j.CheckReservation(
+		ctx, volOptions.MetadataPool, volOptions.RequestName, volOptions.NamePrefix, parentSubVolName, "")
+	if err != nil {
+		return nil, err
+	}
+	if snapData == nil {
+		return nil, nil
+	}
+	snapUUID := snapData.ImageUUID
+	volOptions.SnapshotName = snapData.ImageAttributes.ImageName
+	snapInfo, err := getSnapshotInfo(ctx, volOptions, cr, volumeID(parentSubVolName))
+	if err != nil {
+		var evnf util.ErrSnapNotFound
+		if errors.As(err, &evnf) {
+			err = j.UndoReservation(ctx, volOptions.MetadataPool,
+				volOptions.MetadataPool, snapData.ImageAttributes.ImageName, volOptions.RequestName)
+			return nil, err
+		}
+		return nil, err
+	}
+
+	var tm time.Time
+	layout := "2006-01-02 15:04:05.000000"
+	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
+	tm, err = time.Parse(layout, snapInfo.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	snapInfo.CreationTime, err = ptypes.TimestampProto(tm)
+	if err != nil {
+		return nil, err
+	}
+
+	if snapInfo.Protected == "no" {
+		err = protectSnapshot(ctx, volOptions, cr, volumeID(parentSubVolName))
+		if err != nil {
+			return nil, err
+		}
+	}
+	// found a snapshot already available, process and return it!
+	snapInfo.ID, err = util.GenerateVolID(ctx, volOptions.Monitors, cr, volOptions.FscID,
+		"", volOptions.ClusterID, snapUUID, volIDVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	util.DebugLog(ctx, "Found existing snapshot (%s) with subvolume name (%s) for request (%s)",
+		snapInfo.Name, parentSubVolName, volOptions.RequestName)
+
+	return &snapInfo, nil
+}
+
+/*
 checkVolExists checks to determine if passed in RequestName in volOptions exists on the backend.
 
 **NOTE:** These functions manipulate the rados omaps that hold information regarding
@@ -104,14 +183,6 @@ func checkVolExists(ctx context.Context, volOptions *volumeOptions, req *csi.Cre
 		volumeSource := req.VolumeContentSource
 		switch volumeSource.Type.(type) {
 		case *csi.VolumeContentSource_Snapshot:
-			snapshot := req.VolumeContentSource.GetSnapshot()
-			if snapshot == nil {
-				return nil, status.Error(codes.NotFound, "volume Snapshot cannot be empty")
-			}
-			snapshotID := snapshot.GetSnapshotId()
-			if snapshotID == "" {
-				return nil, status.Errorf(codes.NotFound, "volume Snapshot ID cannot be empty")
-			}
 			var clone = CloneStatus{}
 			// TODO check
 			clone, err = getcloneInfo(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
@@ -274,7 +345,7 @@ func reserveSnap(ctx context.Context, volOptions *volumeOptions, parentSubVolNam
 		return nil, err
 	}
 
-	klog.V(4).Infof(util.Log(ctx, "Generated Snapshot ID (%s) for request name (%s)"),
+	util.DebugLog(ctx, "Generated Snapshot ID (%s) for request name (%s)",
 		vid.SnapshotID, volOptions.RequestName)
 
 	return &vid, nil
@@ -298,84 +369,4 @@ func undoSnapReservation(ctx context.Context, volOptions *volumeOptions, vid sna
 		volOptions.MetadataPool, vid.FsSnapshotName, volOptions.RequestName)
 
 	return err
-}
-
-/*
-checkSnapExists checks to determine if passed in RequestName in volOptions exists on the backend.
-
-**NOTE:** These functions manipulate the rados omaps that hold information regarding
-volume names as requested by the CSI drivers. Hence, these need to be invoked only when the
-respective CSI driver generated volume name based locks are held, as otherwise racy
-access to these omaps may end up leaving them in an inconsistent state.
-
-These functions also cleanup omap reservations that are stale. I.e when omap entries exist and
-backing subvolumes are missing, or one of the omaps exist and the next is missing. This is
-because, the order of omap creation and deletion are inverse of each other, and protected by the
-request name lock, and hence any stale omaps are leftovers from incomplete transactions and are
-hence safe to garbage collect.
-*/
-func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVolName string, secret map[string]string) (*snapshotInfo, error) {
-	snap := &snapshotInfo{}
-
-	cr, err := util.NewAdminCredentials(secret)
-	if err != nil {
-		return nil, err
-	}
-	defer cr.DeleteCredentials()
-
-	j, err := snapJournal.Connect(volOptions.Monitors, cr)
-	if err != nil {
-		return nil, err
-	}
-	defer j.Destroy()
-
-	snapData, err := j.CheckReservation(
-		ctx, volOptions.MetadataPool, volOptions.RequestName, volOptions.NamePrefix, parentSubVolName, "")
-	if err != nil {
-		return nil, err
-	}
-	if snapData == nil {
-		return nil, nil
-	}
-	snapUUID := snapData.ImageUUID
-	snap.Name = snapData.ImageAttributes.ImageName
-	volOptions.SnapshotName = snap.Name
-	snapInfo, err := getSnapshotInfo(ctx, volOptions, cr, volumeID(parentSubVolName))
-	if err != nil {
-		var evnf util.ErrSnapNotFound
-		if errors.As(err, &evnf) {
-			err = j.UndoReservation(ctx, volOptions.MetadataPool,
-				volOptions.MetadataPool, snap.Name, volOptions.RequestName)
-			return nil, err
-		}
-		return nil, err
-	}
-
-	var tm time.Time
-	layout := "2006-01-02 15:04:05.000000"
-	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
-	tm, err = time.Parse(layout, snapInfo.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
-	snapInfo.CreationTime, err = ptypes.TimestampProto(tm)
-	if err != nil {
-		return nil, err
-	}
-	// check snapshot is protected
-	err = protectSnapshot(ctx, volOptions, cr, volumeID(parentSubVolName))
-	if err != nil {
-		return nil, err
-	}
-	// found a snapshot already available, process and return it!
-	snapInfo.ID, err = util.GenerateVolID(ctx, volOptions.Monitors, cr, volOptions.FscID,
-		"", volOptions.ClusterID, snapUUID, volIDVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	klog.V(4).Infof(util.Log(ctx, "Found existing snapshot (%s) with subvolume name (%s) for request (%s)"),
-		snapInfo.Name, parentSubVolName, volOptions.RequestName)
-
-	return &snapInfo, nil
 }

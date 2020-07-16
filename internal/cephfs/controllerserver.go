@@ -58,11 +58,13 @@ func (cs *ControllerServer) createBackingVolume(
 	volOptions *volumeOptions,
 	vID *volumeIdentifier,
 	secret map[string]string) error {
+
 	cr, err := util.NewAdminCredentials(secret)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	defer cr.DeleteCredentials()
+
 	// check parent volume exists
 	// create restore
 	if req.VolumeContentSource != nil {
@@ -77,6 +79,7 @@ func (cs *ControllerServer) createBackingVolume(
 			if snapshotID == "" {
 				return status.Errorf(codes.NotFound, "volume Snapshot ID cannot be empty")
 			}
+
 			var snof util.ErrSnapNotFound
 			snapOpt, sid, snapOpterr := newSnapshotOptionsFromID(ctx, snapshotID, cr)
 			if snapOpterr != nil {
@@ -92,6 +95,7 @@ func (cs *ControllerServer) createBackingVolume(
 				}
 				return status.Error(codes.Internal, err.Error())
 			}
+
 			volOptions.SnapshotName = snapOpt.SnapshotName
 			err = cloneSnapshot(ctx, volOptions, cr, volumeID(sid.FsSubVolumeName), volumeID(vID.FsSubvolName))
 			if err != nil {
@@ -104,12 +108,14 @@ func (cs *ControllerServer) createBackingVolume(
 					}
 				}
 			}()
+
 			// This is a work around to fix sizing issue for cloned images
 			err = resizeVolume(ctx, volOptions, cr, volumeID(vID.FsSubvolName), volOptions.Size)
 			if err != nil {
 				klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), vID.FsSubvolName, err)
 				return status.Error(codes.Internal, err.Error())
 			}
+
 			var clone = CloneStatus{}
 			// TODO check
 			clone, err = getcloneInfo(ctx, volOptions, cr, volumeID(vID.FsSubvolName))
@@ -120,6 +126,7 @@ func (cs *ControllerServer) createBackingVolume(
 				return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vID.FsSubvolName)}
 			}
 			return nil
+
 		case *csi.VolumeContentSource_Volume:
 			vol := req.VolumeContentSource.GetVolume()
 			if vol == nil {
@@ -129,6 +136,7 @@ func (cs *ControllerServer) createBackingVolume(
 			if volID == "" {
 				return status.Errorf(codes.NotFound, "volume ID cannot be empty")
 			}
+
 			// Find the volume using the provided VolumeID
 			_, pvID, newVolOpterr := newVolumeOptionsFromVolID(ctx, volID, nil, req.Secrets)
 			if newVolOpterr != nil {
@@ -140,6 +148,7 @@ func (cs *ControllerServer) createBackingVolume(
 			}
 			err = createCloneFromSubvolume(ctx, volumeID(pvID.FsSubvolName), volumeID(vID.FsSubvolName), volOptions, cr)
 			return err
+
 		default:
 			return status.Error(codes.InvalidArgument, "not a proper volume source")
 		}

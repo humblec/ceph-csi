@@ -33,6 +33,7 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 		klog.Errorf(util.Log(ctx, "failed to create snapshot %s %v"), volOpt.SnapshotName, err)
 		return err
 	}
+
 	var (
 		protectErr error
 		cloneErr   error
@@ -57,6 +58,7 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 			}
 		}
 	}()
+
 	protectErr = protectSnapshot(ctx, volOpt, cr, volID)
 	if protectErr != nil {
 		klog.Errorf(util.Log(ctx, "failed to protect snapshot %s %v"), volOpt.SnapshotName, protectErr)
