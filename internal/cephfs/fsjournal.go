@@ -58,9 +58,9 @@ because, the order of omap creation and deletion are inverse of each other, and 
 request name lock, and hence any stale omaps are leftovers from incomplete transactions and are
 hence safe to garbage collect.
 */
+// nolint:gocyclo // TODO: needs to get fixed later
 func checkVolExists(ctx context.Context, volOptions *volumeOptions, req *csi.CreateVolumeRequest, secret map[string]string) (*volumeIdentifier, error) {
 	var vid volumeIdentifier
-
 	cr, err := util.NewAdminCredentials(secret)
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func checkVolExists(ctx context.Context, volOptions *volumeOptions, req *csi.Cre
 			if err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
-			if clone.Status.State != "complete" {
+			if clone.Status.State != cephFSCloneCompleted {
 				return nil, ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vid.FsSubvolName)}
 			}
 			// This is a work around to fix sizing issue for cloned images
@@ -126,7 +126,6 @@ func checkVolExists(ctx context.Context, volOptions *volumeOptions, req *csi.Cre
 			if err != nil {
 				klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), volumeID(vid.FsSubvolName), err)
 				return nil, err
-
 			}
 		case *csi.VolumeContentSource_Volume:
 			vol := req.VolumeContentSource.GetVolume()
@@ -138,7 +137,7 @@ func checkVolExists(ctx context.Context, volOptions *volumeOptions, req *csi.Cre
 				return nil, status.Errorf(codes.NotFound, "volume ID cannot be empty")
 			}
 			// Find the volume using the provided VolumeID
-			_, pvID, err := newVolumeOptionsFromVolID(ctx, string(volID), nil, req.Secrets)
+			_, pvID, err := newVolumeOptionsFromVolID(ctx, volID, nil, req.Secrets)
 			if err != nil {
 				var evnf ErrVolumeNotFound
 				if !errors.As(err, &evnf) {
@@ -352,9 +351,9 @@ func checkSnapExists(ctx context.Context, volOptions *volumeOptions, parentSubVo
 		return nil, err
 	}
 
-	tm := time.Time{}
+	var tm time.Time
 	layout := "2006-01-02 15:04:05.000000"
-	// TODO currently paring of timestamp to time.ANSIC generate from ceph fs is failng
+	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
 	tm, err = time.Parse(layout, snapInfo.CreatedAt)
 	if err != nil {
 		return nil, err

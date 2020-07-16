@@ -24,13 +24,17 @@ import (
 
 	csicommon "github.com/ceph/ceph-csi/internal/csi-common"
 	"github.com/ceph/ceph-csi/internal/util"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/protobuf/ptypes"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	klog "k8s.io/klog/v2"
+)
+
+const (
+	cephFSCloneCompleted = "complete"
 )
 
 // ControllerServer struct of CEPH CSI driver with supported methods of CSI
@@ -46,18 +50,22 @@ type ControllerServer struct {
 	SnapshotLocks *util.VolumeLocks
 }
 
+// nolint:gocyclo // TODO: needs to get fixed later
 // createBackingVolume creates the backing subvolume and on any error cleans up any created entities
-func (cs *ControllerServer) createBackingVolume(ctx context.Context, req *csi.CreateVolumeRequest, volOptions *volumeOptions, vID *volumeIdentifier, secret map[string]string) error {
+func (cs *ControllerServer) createBackingVolume(
+	ctx context.Context,
+	req *csi.CreateVolumeRequest,
+	volOptions *volumeOptions,
+	vID *volumeIdentifier,
+	secret map[string]string) error {
 	cr, err := util.NewAdminCredentials(secret)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	defer cr.DeleteCredentials()
-
 	// check parent volume exists
 	// create restore
 	if req.VolumeContentSource != nil {
-
 		volumeSource := req.VolumeContentSource
 		switch volumeSource.Type.(type) {
 		case *csi.VolumeContentSource_Snapshot:
@@ -70,12 +78,12 @@ func (cs *ControllerServer) createBackingVolume(ctx context.Context, req *csi.Cr
 				return status.Errorf(codes.NotFound, "volume Snapshot ID cannot be empty")
 			}
 			var snof util.ErrSnapNotFound
-			snapOpt, sid, err := newSnapshotOptionsFromID(ctx, snapshotID, cr)
-			if err != nil {
-				if errors.As(err, &snof) {
-					return status.Error(codes.NotFound, err.Error())
+			snapOpt, sid, snapOpterr := newSnapshotOptionsFromID(ctx, snapshotID, cr)
+			if snapOpterr != nil {
+				if errors.As(snapOpterr, &snof) {
+					return status.Error(codes.NotFound, snapOpterr.Error())
 				}
-				return status.Error(codes.Internal, err.Error())
+				return status.Error(codes.Internal, snapOpterr.Error())
 			}
 			_, err = checkSnapExists(ctx, snapOpt, sid.FsSubVolumeName, req.GetSecrets())
 			if err != nil {
@@ -101,7 +109,6 @@ func (cs *ControllerServer) createBackingVolume(ctx context.Context, req *csi.Cr
 			if err != nil {
 				klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), vID.FsSubvolName, err)
 				return status.Error(codes.Internal, err.Error())
-
 			}
 			var clone = CloneStatus{}
 			// TODO check
@@ -109,7 +116,7 @@ func (cs *ControllerServer) createBackingVolume(ctx context.Context, req *csi.Cr
 			if err != nil {
 				return status.Error(codes.Internal, err.Error())
 			}
-			if clone.Status.State != "complete" {
+			if clone.Status.State != cephFSCloneCompleted {
 				return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vID.FsSubvolName)}
 			}
 			return nil
@@ -123,13 +130,13 @@ func (cs *ControllerServer) createBackingVolume(ctx context.Context, req *csi.Cr
 				return status.Errorf(codes.NotFound, "volume ID cannot be empty")
 			}
 			// Find the volume using the provided VolumeID
-			_, pvID, err := newVolumeOptionsFromVolID(ctx, string(volID), nil, req.Secrets)
-			if err != nil {
+			_, pvID, newVolOpterr := newVolumeOptionsFromVolID(ctx, volID, nil, req.Secrets)
+			if newVolOpterr != nil {
 				var evnf ErrVolumeNotFound
-				if !errors.As(err, &evnf) {
-					return status.Error(codes.NotFound, err.Error())
+				if !errors.As(newVolOpterr, &evnf) {
+					return status.Error(codes.NotFound, newVolOpterr.Error())
 				}
-				return status.Error(codes.Internal, err.Error())
+				return status.Error(codes.Internal, newVolOpterr.Error())
 			}
 			err = createCloneFromSubvolume(ctx, volumeID(pvID.FsSubvolName), volumeID(vID.FsSubvolName), volOptions, cr)
 			return err
@@ -406,7 +413,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 // CreateSnapshot creates the snapshot in backend and stores metadata
 // in store
-// nolint: gocyclo
+// nolint:gocyclo // TODO: needs to get fixed later
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	if err := cs.validateSnapshotReq(ctx, req); err != nil {
 		return nil, err
@@ -456,7 +463,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		}, nil
 	}
 
-	// check are we able to retrive the size of parent
+	// check are we able to retrieve the size of parent
 	// ceph fs subvolume info command got added in 14.2.10 and 15.+
 	// as we are not able to retrieve the parent size we are rejecting the
 	// request to create snapshot
@@ -493,7 +500,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 	volOptions.SnapshotName = sID.FsSnapshotName
 	snap := snapshotInfo{}
-	snap, err = doSnapshot(ctx, *&vid.FsSubvolName, volOptions, req.GetSecrets())
+	snap, err = doSnapshot(ctx, vid.FsSubvolName, volOptions, req.GetSecrets())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -535,9 +542,9 @@ func doSnapshot(ctx context.Context, subvolumeName string, volOpt *volumeOptions
 		klog.Errorf(util.Log(ctx, "failed to get snapshot info %s %v"), volOpt.SnapshotName, err)
 		return snap, err
 	}
-	tm := time.Time{}
+	var tm time.Time
 	layout := "2006-01-02 15:04:05.000000"
-	// TODO currently paring of timestamp to time.ANSIC generate from ceph fs is failng
+	// TODO currently parsing of timestamp to time.ANSIC generate from ceph fs is failng
 	tm, err = time.Parse(layout, snap.CreatedAt)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to paree time for snapshot %s %v"), volOpt.SnapshotName, err)
@@ -595,7 +602,6 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		return nil, status.Errorf(codes.Aborted, util.SnapshotOperationAlreadyExistsFmt, snapshotID)
 	}
 	defer cs.SnapshotLocks.Release(snapshotID)
-
 	volOpt, sid, err := newSnapshotOptionsFromID(ctx, snapshotID, cr)
 	if err != nil {
 		// if error is ErrPoolNotFound, the pool is already deleted we dont

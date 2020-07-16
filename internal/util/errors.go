@@ -112,7 +112,7 @@ func NewErrPoolNotFound(pool string, err error) ErrPoolNotFound {
 	return ErrPoolNotFound{pool, err}
 }
 
-// ErrSnapNotFound represent snapshot not found
+// ErrSnapNotFound represent snapshot not found.
 type ErrSnapNotFound struct {
 	SnapName string
 	Err      error

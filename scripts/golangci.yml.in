@@ -150,7 +150,7 @@ linters-settings:
   gocognit:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
     # TODO: decrease complexity with refacoring the code
-    min-complexity: 40
+    min-complexity: 45
   dogsled:
     max-blank-identifiers: 3
 

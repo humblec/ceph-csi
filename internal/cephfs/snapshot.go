@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/ceph/ceph-csi/internal/util"
-	"github.com/golang/protobuf/ptypes/timestamp"
 
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"k8s.io/klog"
 )
 
@@ -235,46 +235,6 @@ func cloneSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cred
 		return err
 	}
 	return nil
-}
-
-type cloneStatus struct {
-	Status struct {
-		State string `json:"state"`
-	} `json:"status"`
-}
-
-func getCloneStatus(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID, cloneID volumeID) (cloneStatus, error) {
-	var status cloneStatus
-	args := []string{
-		"fs",
-		"clone",
-		"status",
-		volOptions.FsName,
-		string(volID),
-		volOptions.SnapshotName,
-		string(cloneID),
-		"--group_name",
-		volOptions.SubvolumeGroup,
-		"-m", volOptions.Monitors,
-		"-c", util.CephConfigPath,
-		"-n", cephEntityClientPrefix + cr.ID,
-		"--keyfile=" + cr.KeyFile,
-	}
-
-	err := execCommandJSON(
-		ctx,
-		&status,
-		"ceph",
-		args[:]...)
-	if err != nil {
-		if strings.Contains(err.Error(), getVolumeNotFoundErrorString(volID)) {
-			return status, ErrVolumeNotFound{err}
-		}
-
-		klog.Errorf(util.Log(ctx, "failed to clone subvolume snapshot %s %s(%s) in fs %s"), string(cloneID), string(volID), err, volOptions.FsName)
-		return status, err
-	}
-	return status, nil
 }
 
 type CloneStatus struct {
