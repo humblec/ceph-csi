@@ -26,7 +26,7 @@ import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 )
 
 // volumeIdentifier structure contains an association between the CSI VolumeID to its subvolume
@@ -39,6 +39,7 @@ type volumeIdentifier struct {
 type snapshotIdentifier struct {
 	FsSnapshotName string
 	SnapshotID     string
+	RequestName    string
 	CreationTime   *timestamp.Timestamp
 	FsSubvolName   string
 }
@@ -83,6 +84,17 @@ func checkVolExists(ctx context.Context,
 	vid.FsSubvolName = imageData.ImageAttributes.ImageName
 	var evnf ErrVolumeNotFound
 
+	clone, cloneInfoErr := getcloneInfo(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
+	if cloneInfoErr != nil {
+		if !errors.As(cloneInfoErr, &evnf) {
+			return nil, status.Error(codes.Internal, cloneInfoErr.Error())
+		}
+	} else {
+		if clone.Status.State != cephFSCloneCompleted {
+			return nil, ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vid.FsSubvolName)}
+		}
+	}
+
 	_, err = getVolumeRootPathCeph(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
 	if err != nil {
 		if errors.As(err, &evnf) && parentVolOpt == nil && sID == nil {
@@ -109,18 +121,6 @@ func checkVolExists(ctx context.Context,
 		vid.VolumeID, vid.FsSubvolName, volOptions.RequestName)
 
 	if sID != nil {
-		clone, cloneInfoErr := getcloneInfo(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
-		if cloneInfoErr != nil {
-			if errors.As(cloneInfoErr, &evnf) {
-				err = j.UndoReservation(ctx, volOptions.MetadataPool,
-					volOptions.MetadataPool, vid.FsSubvolName, volOptions.RequestName)
-				return nil, err
-			}
-			return nil, status.Error(codes.Internal, cloneInfoErr.Error())
-		}
-		if clone.Status.State != cephFSCloneCompleted {
-			return nil, ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vid.FsSubvolName)}
-		}
 		// This is a work around to fix sizing issue for cloned images
 		err = resizeVolume(ctx, volOptions, cr, volumeID(vid.FsSubvolName), volOptions.Size)
 		if err != nil {

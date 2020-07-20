@@ -23,7 +23,12 @@ import (
 
 	"github.com/ceph/ceph-csi/internal/util"
 
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
+)
+
+const (
+	// cephFSCloneCompleted indicates that clone is in complete state
+	cephFSCloneCompleted = "complete"
 )
 
 func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volOpt, parentvolOpt *volumeOptions, cr *util.Credentials) error {
@@ -34,13 +39,15 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 		return err
 	}
 	var (
+		// if protectErr is not nil we will delete the snapshot as the protect fails
 		protectErr error
-		cloneErr   error
+		// if cloneErr is not nil we will unprotect the snapshot and delete the snapshot
+		cloneErr error
 	)
 	defer func() {
 		if protectErr != nil {
-			dErr := deleteSnapshot(ctx, parentvolOpt, cr, snapshotID, volID)
-			if dErr != nil {
+			err = deleteSnapshot(ctx, parentvolOpt, cr, snapshotID, volID)
+			if err != nil {
 				klog.Errorf(util.Log(ctx, "failed to delete snapshot %s %v"), snapshotID, err)
 			}
 		}
@@ -49,11 +56,8 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 			if err = unprotectSnapshot(ctx, parentvolOpt, cr, snapshotID, volID); err != nil {
 				klog.Errorf(util.Log(ctx, "failed to unprotect snapshot %s %v"), snapshotID, err)
 			}
-			if dSnap := deleteSnapshot(ctx, parentvolOpt, cr, snapshotID, volID); dSnap != nil {
+			if err = deleteSnapshot(ctx, parentvolOpt, cr, snapshotID, volID); err != nil {
 				klog.Errorf(util.Log(ctx, "failed to delete snapshot %s %v"), snapshotID, err)
-			}
-			if dErr := purgeVolume(ctx, cloneID, cr, volOpt); dErr != nil {
-				klog.Errorf(util.Log(ctx, "failed to delete volume %s: %v"), cloneID, dErr)
 			}
 		}
 	}()
@@ -68,54 +72,19 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 		klog.Errorf(util.Log(ctx, "failed to clone snapshot %s %s to %s %v"), volID, snapshotID, cloneID, cloneErr)
 		return protectErr
 	}
-	var clone CloneStatus
-	clone, cloneErr = getcloneInfo(ctx, volOpt, cr, cloneID)
-	if err != nil {
-		return err
-	}
-	if clone.Status.State != cephFSCloneCompleted {
-		return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", cloneID)}
-	}
-	// This is a work around to fix sizing issue for cloned images
-	cloneErr = resizeVolume(ctx, volOpt, cr, cloneID, volOpt.Size)
-	if cloneErr != nil {
-		klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), cloneID, cloneErr)
-		return cloneErr
-	}
 
-	cloneErr = unprotectSnapshot(ctx, parentvolOpt, cr, snapshotID, volID)
-	if cloneErr != nil {
-		klog.Errorf(util.Log(ctx, "failed to unprotect snapshot %s %v"), snapshotID, cloneErr)
-		return cloneErr
-	}
-	cloneErr = deleteSnapshot(ctx, parentvolOpt, cr, snapshotID, volID)
-	if cloneErr != nil {
-		klog.Errorf(util.Log(ctx, "failed to delete snapshot %s %v"), snapshotID, cloneErr)
-		return cloneErr
-	}
-	return nil
+	// returning cloneInProgress as we cannot do any undo operations if
+	// getcloneInfo fails, Even we are not checking the clone status here, just
+	// returning the error.
+	return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", cloneID)}
 }
 
 func checkCloneFromSubvolumeExists(ctx context.Context, volID, cloneID volumeID, volOpt, parentVolOpt *volumeOptions, cr *util.Credentials) error {
+	// snapshot name is same as clone name as we need a name which can be
+	// identified during PVC-PVC cloning.
 	snapShotID := cloneID
-	// check clone exists
-	_, err := getVolumeRootPathCeph(ctx, volOpt, cr, cloneID)
-	if err != nil {
-		var evnf ErrVolumeNotFound
-		if !errors.As(err, &evnf) {
-			return err
-		}
-	}
-	var clone CloneStatus
-	clone, err = getcloneInfo(ctx, volOpt, cr, cloneID)
-	if err != nil {
-		return err
-	}
-	if clone.Status.State != cephFSCloneCompleted {
-		return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", cloneID)}
-	}
 	// This is a work around to fix sizing issue for cloned images
-	err = resizeVolume(ctx, volOpt, cr, cloneID, volOpt.Size)
+	err := resizeVolume(ctx, volOpt, cr, cloneID, volOpt.Size)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), cloneID, err)
 		return err

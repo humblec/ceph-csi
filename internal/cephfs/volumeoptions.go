@@ -415,60 +415,60 @@ func newVolumeOptionsFromStaticVolume(volID string, options map[string]string) (
 
 // newSnapshotOptionsFromID generates a new instance of volumeOptions and snapshotIdentifier
 // from the provided CSI VolumeID
-func newSnapshotOptionsFromID(ctx context.Context, snapID string, cr *util.Credentials) (*volumeOptions, *snapshotIdentifier, error) {
+func newSnapshotOptionsFromID(ctx context.Context, snapID string, cr *util.Credentials) (*volumeOptions, *snapshotInfo, *snapshotIdentifier, error) {
 	var (
 		vi         util.CSIIdentifier
 		volOptions volumeOptions
 		sid        snapshotIdentifier
 	)
-	// Decode the VolID first, to detect older volumes or pre-provisioned volumes
-	// before other errors
+	// Decode the snapID first, to detect pre-provisioned snapshot before other errors
 	err := vi.DecomposeCSIID(snapID)
 	if err != nil {
 		err = fmt.Errorf("error decoding snapshot ID (%s) (%s)", err, snapID)
-		return nil, nil, ErrInvalidVolID{err}
+		return nil, nil, nil, ErrInvalidVolID{err}
 	}
 	volOptions.ClusterID = vi.ClusterID
 	sid.SnapshotID = snapID
 	volOptions.FscID = vi.LocationID
 
 	if volOptions.Monitors, err = util.Mons(csiConfigFile, vi.ClusterID); err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch monitor list using clusterID (%s): %w", vi.ClusterID, err)
+		return nil, nil, nil, fmt.Errorf("failed to fetch monitor list using clusterID (%s): %w", vi.ClusterID, err)
 	}
 
 	if volOptions.SubvolumeGroup, err = util.CephFSSubvolumeGroup(csiConfigFile, vi.ClusterID); err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch subvolumegroup list using clusterID (%s): %w", vi.ClusterID, err)
+		return nil, nil, nil, fmt.Errorf("failed to fetch subvolumegroup list using clusterID (%s): %w", vi.ClusterID, err)
 	}
 
 	volOptions.FsName, err = getFsName(ctx, volOptions.Monitors, cr, volOptions.FscID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	volOptions.MetadataPool, err = getMetadataPool(ctx, volOptions.Monitors, cr, volOptions.FsName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	j, err := snapJournal.Connect(volOptions.Monitors, cr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer j.Destroy()
 
 	imageAttributes, err := j.GetImageAttributes(
 		ctx, volOptions.MetadataPool, vi.ObjectUUID, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	volOptions.RequestName = imageAttributes.RequestName
+	// storing request name in snapshotshot Identifier for now
+	sid.RequestName = imageAttributes.RequestName
 	sid.FsSnapshotName = imageAttributes.ImageName
 	sid.FsSubvolName = imageAttributes.SourceName
 
-	_, err = getSnapshotInfo(ctx, &volOptions, cr, volumeID(sid.FsSnapshotName), volumeID(sid.FsSubvolName))
+	info, err := getSnapshotInfo(ctx, &volOptions, cr, volumeID(sid.FsSnapshotName), volumeID(sid.FsSubvolName))
 	if err != nil {
-		return &volOptions, &sid, err
+		return nil, nil, nil, err
 	}
 
-	return &volOptions, &sid, nil
+	return &volOptions, &info, &sid, nil
 }

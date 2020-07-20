@@ -24,7 +24,7 @@ import (
 	"github.com/ceph/ceph-csi/internal/util"
 
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 )
 
 func snapshotNotFoundErrorString(snapName string) string {
@@ -230,6 +230,9 @@ func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *uti
 		args[:]...)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to clone subvolume snapshot %s %s(%s) in fs %s"), string(cloneID), string(volID), err, parentVolOptions.FsName)
+		if strings.HasPrefix(err.Error(), errNotFoundString) {
+			return ErrVolumeNotFound{err}
+		}
 		return err
 	}
 	return nil

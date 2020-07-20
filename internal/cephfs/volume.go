@@ -46,6 +46,7 @@ const (
 	cephEntityClientPrefix = "client."
 )
 
+// Subvolume holds subvolume information.
 type Subvolume struct {
 	Atime         string   `json:"atime"`
 	BytesPcent    string   `json:"bytes_pcent"`
@@ -133,7 +134,7 @@ func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.C
 
 		return info, err
 	}
-	clusterAdditionalInfo[volOptions.ClusterID].resizeSupported = true
+	clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = true
 	return info, nil
 }
 
@@ -144,7 +145,7 @@ type localClusterState struct {
 	// for corresponding cluster.
 	subVolumeGroupCreated bool
 	// set true if cluster supports subvolume info command.
-	subVolumeInfo bool
+	subVolumeInfoSupported bool
 }
 
 func createVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID, bytesQuota int64) error {
