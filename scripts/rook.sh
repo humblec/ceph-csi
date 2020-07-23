@@ -7,7 +7,7 @@ ROOK_BLOCK_POOL_NAME=${ROOK_BLOCK_POOL_NAME:-"newrbdpool"}
 ROOK_CEPH_CLUSTER_VERSION="v14.2.10"
 
 rook_version() {
-	echo "${ROOK_VERSION#?v}" | cut -d'.' -f"${1}"
+	echo "${ROOK_VERSION#?}" | cut -d'.' -f"${1}"
 }
 
 function deploy_rook() {
