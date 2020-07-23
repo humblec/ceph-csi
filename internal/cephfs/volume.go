@@ -125,7 +125,7 @@ func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.C
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to get subvolume info for the vol %s(%s)"), string(volID), err)
 		if strings.HasPrefix(err.Error(), errNotFoundString) {
-			return info, ErrVolumeNotFound{err}
+			return info, ErrVolumeNotFound
 		}
 		// Incase the error is other than invalid command return error to the caller.
 		if !strings.Contains(err.Error(), inValidCommmand) {

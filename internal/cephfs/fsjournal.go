@@ -82,16 +82,10 @@ func checkVolExists(ctx context.Context,
 	imageUUID := imageData.ImageUUID
 	vid.FsSubvolName = imageData.ImageAttributes.ImageName
 
-	//_, err = getVolumeRootPathCeph(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
-	//if err != nil {
-	//if errors.Is(err, ErrVolumeNotFound) {
-
-	var evnf ErrVolumeNotFound
-
 	if sID != nil || pvID != nil {
 		clone, cloneInfoErr := getcloneInfo(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
 		if cloneInfoErr != nil {
-			if errors.As(cloneInfoErr, &evnf) {
+			if errors.Is(cloneInfoErr, ErrVolumeNotFound) {
 				if pvID != nil {
 					err = cleanupCloneFromSubvolumeSnapshot(
 						ctx, volumeID(pvID.FsSubvolName),
@@ -137,7 +131,7 @@ func checkVolExists(ctx context.Context,
 	} else {
 		_, err = getVolumeRootPathCeph(ctx, volOptions, cr, volumeID(vid.FsSubvolName))
 		if err != nil {
-			if errors.As(err, &evnf) && parentVolOpt == nil && sID == nil {
+			if errors.Is(err, ErrVolumeNotFound) && parentVolOpt == nil && sID == nil {
 				err = j.UndoReservation(ctx, volOptions.MetadataPool,
 					volOptions.MetadataPool, vid.FsSubvolName, volOptions.RequestName)
 				return nil, err

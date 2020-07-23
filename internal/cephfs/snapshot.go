@@ -231,7 +231,7 @@ func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *uti
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to clone subvolume snapshot %s %s(%s) in fs %s"), string(cloneID), string(volID), err, parentVolOptions.FsName)
 		if strings.HasPrefix(err.Error(), errNotFoundString) {
-			return ErrVolumeNotFound{err}
+			return ErrVolumeNotFound
 		}
 		return err
 	}
