@@ -277,6 +277,9 @@ func createCephfsStorageClass(c kubernetes.Interface, f *framework.Framework, en
 	if enablePool {
 		sc.Parameters["pool"] = "myfs-data0"
 	}
+	clusterVersion, stdErr := execCommandInToolBoxPod(f, "ceph version", rookNamespace)
+	e2elog.Logf("Ceph Cluster Version %v", clusterVersion)
+	Expect(stdErr).Should(BeEmpty())
 	fsID, stdErr := execCommandInToolBoxPod(f, "ceph fsid", rookNamespace)
 	Expect(stdErr).Should(BeEmpty())
 	// remove new line present in fsID
