@@ -424,8 +424,7 @@ func newSnapshotOptionsFromID(ctx context.Context, snapID string, cr *util.Crede
 	// Decode the snapID first, to detect pre-provisioned snapshot before other errors
 	err := vi.DecomposeCSIID(snapID)
 	if err != nil {
-		err = fmt.Errorf("error decoding snapshot ID (%s) (%s)", err, snapID)
-		return nil, nil, nil, ErrInvalidVolID{err}
+		return nil, nil, nil, ErrInvalidVolID
 	}
 	volOptions.ClusterID = vi.ClusterID
 	sid.SnapshotID = snapID
@@ -460,7 +459,7 @@ func newSnapshotOptionsFromID(ctx context.Context, snapID string, cr *util.Crede
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	// storing request name in snapshotshot Identifier for now
+	// storing request name in snapshotshot Identifier
 	sid.RequestName = imageAttributes.RequestName
 	sid.FsSnapshotName = imageAttributes.ImageName
 	sid.FsSubvolName = imageAttributes.SourceName

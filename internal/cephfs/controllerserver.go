@@ -436,7 +436,6 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	// Find the volume using the provided VolumeID
 	parentVolOptions, vid, err := newVolumeOptionsFromVolID(ctx, sourceVolID, nil, req.GetSecrets())
 	if err != nil {
-		//var epnf util.ErrPoolNotFound
 		if errors.Is(err, util.ErrPoolNotFound) {
 			klog.Warningf(util.Log(ctx, "failed to get backend volume for %s: %v"), sourceVolID, err)
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -638,8 +637,7 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	if err != nil {
 		// if error is ErrPoolNotFound, the pool is already deleted we dont
 		// need to worry about deleting snapshot or omap data, return success
-		var epnf util.ErrPoolNotFound
-		if errors.As(err, &epnf) {
+		if errors.Is(err, util.ErrPoolNotFound) {
 			klog.Warningf(util.Log(ctx, "failed to get backend snapshot for %s: %v"), snapshotID, err)
 			return &csi.DeleteSnapshotResponse{}, nil
 		}
@@ -647,8 +645,7 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 		// if error is ErrKeyNotFound, then a previous attempt at deletion was complete
 		// or partially complete (snap and snapOMap are garbage collected already), hence return
 		// success as deletion is complete
-		var eknf util.ErrKeyNotFound
-		if errors.As(err, &eknf) {
+		if errors.Is(err, util.ErrKeyNotFound) {
 			return &csi.DeleteSnapshotResponse{}, nil
 		}
 		var snof util.ErrSnapNotFound
