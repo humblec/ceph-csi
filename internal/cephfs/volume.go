@@ -129,12 +129,13 @@ func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.C
 		}
 		// Incase the error is other than invalid command return error to the caller.
 		if !strings.Contains(err.Error(), inValidCommmand) {
+			clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = "false"
 			return info, InvalidCommand{err: err}
 		}
 
 		return info, err
 	}
-	clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = true
+	clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = "true"
 	return info, nil
 }
 
@@ -144,8 +145,9 @@ type localClusterState struct {
 	// set true once a subvolumegroup is created
 	// for corresponding cluster.
 	subVolumeGroupCreated bool
-	// set true if cluster supports subvolume info command.
-	subVolumeInfoSupported bool
+	// set "true" if cluster supports subvolume info command if not supported
+	// "false" default value is Empty string.
+	subVolumeInfoSupported string
 }
 
 func createVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID, bytesQuota int64) error {

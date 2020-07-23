@@ -473,8 +473,8 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	// request to create snapshot
 	var info Subvolume
 	if _, keyPresent := clusterAdditionalInfo[clusterData.ClusterID]; keyPresent {
-		if !clusterAdditionalInfo[clusterData.ClusterID].subVolumeInfoSupported {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		if clusterAdditionalInfo[clusterData.ClusterID].subVolumeInfoSupported == "false" {
+			return nil, status.Error(codes.FailedPrecondition, "subvolume info command not supported in current ceph cluster")
 		}
 	}
 	info, err = getSubVolumeInfo(ctx, parentVolOptions, cr, volumeID(vid.FsSubvolName))
