@@ -507,6 +507,65 @@ var _ = Describe("cephfs", func() {
 					}
 				})
 
+				By("populate source volume, create a PVC-PVC clone and bind it to an app", func() {
+					v, err := f.ClientSet.Discovery().ServerVersion()
+					if err != nil {
+						e2elog.Logf("failed to get server version with error %v", err)
+						Fail(err.Error())
+					}
+					// pvc clone is only supported from v1.16+
+					if v.Major > "1" || (v.Major == "1" && v.Minor >= "16") {
+						pvc, err := loadPVC(pvcPath)
+						if err != nil {
+							Fail(err.Error())
+						}
+
+						pvc.Namespace = f.UniqueName
+						wErr := writeDataInPod(pvcPath, appPath, f)
+						if wErr != nil {
+							Fail(wErr.Error())
+						}
+
+						pvcClone, err := loadPVC(pvcSmartClonePath)
+						if err != nil {
+							Fail(err.Error())
+						}
+						pvcClone.Spec.DataSource.Name = pvc.Name
+						pvcClone.Namespace = f.UniqueName
+						appClone, err := loadApp(appSmartClonePath)
+						if err != nil {
+							Fail(err.Error())
+						}
+						appClone.Namespace = f.UniqueName
+						totalCount := 1
+						// create clone and bind it to an app
+						for i := 0; i < totalCount; i++ {
+							name := fmt.Sprintf("%s%d", f.UniqueName, i)
+							err = createPVCAndApp(name, f, pvcClone, appClone, deployTimeout)
+							if err != nil {
+								Fail(err.Error())
+							}
+						}
+
+						// delete parent pvc
+						err = deletePVCAndValidatePV(f.ClientSet, pvc, deployTimeout)
+						if err != nil {
+							Fail(err.Error())
+						}
+
+						// delete clone and app
+						for i := 0; i < totalCount; i++ {
+							name := fmt.Sprintf("%s%d", f.UniqueName, i)
+							pvcClone.Spec.DataSource.Name = name
+							err = deletePVCAndApp(name, f, pvcClone, appClone)
+							if err != nil {
+								Fail(err.Error())
+							}
+						}
+
+					}
+				})
+
 				By("Create ROX PVC and Bind it to an app", func() {
 					// create pvc and bind it to an app
 					pvc, err := loadPVC(pvcPath)
