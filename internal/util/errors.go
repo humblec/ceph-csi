@@ -59,3 +59,19 @@ func (e errorPair) Unwrap() error {
 func JoinErrors(e1, e2 error) error {
 	return errorPair{e1, e2}
 }
+
+// ErrSnapNotFound represent snapshot not found.
+type ErrSnapNotFound struct {
+	SnapName string
+	Err      error
+}
+
+// Error returns a user presentable string of the error.
+func (e ErrSnapNotFound) Error() string {
+	return e.Err.Error()
+}
+
+// Unwrap returns the encapsulated error of ErrSnapNotFound.
+func (e ErrSnapNotFound) Unwrap() error {
+	return e.Err
+}
