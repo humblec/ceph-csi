@@ -926,6 +926,39 @@ func listRBDImages(f *framework.Framework) []string {
 	return imgInfos
 }
 
+func writeDataInPod(pvcPath, appPath string, f *framework.Framework) error {
+	pvc, err := loadPVC(pvcPath)
+	if pvc == nil {
+		return err
+	}
+
+	pvc.Namespace = f.UniqueName
+
+	app, err := loadApp(appPath)
+	if err != nil {
+		return err
+	}
+	app.Labels = map[string]string{"app": "write-data-in-pod"}
+	app.Namespace = f.UniqueName
+
+	err = createPVCAndApp("", f, pvc, app, deployTimeout)
+	if err != nil {
+		return err
+	}
+
+	opt := metav1.ListOptions{
+		LabelSelector: "app=write-data-in-pod",
+	}
+	// write data to PVC
+	filePath := app.Spec.Containers[0].VolumeMounts[0].MountPath + "/test"
+
+	_, writeErr := execCommandInPod(f, fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=500", filePath), app.Namespace, &opt)
+	Expect(writeErr).Should(BeEmpty())
+
+	err = deletePVCAndApp("", f, pvc, app)
+	return err
+}
+
 func checkDataPersist(pvcPath, appPath string, f *framework.Framework) error {
 	data := "checking data persist"
 	pvc, err := loadPVC(pvcPath)

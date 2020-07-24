@@ -7,11 +7,7 @@ ROOK_BLOCK_POOL_NAME=${ROOK_BLOCK_POOL_NAME:-"newrbdpool"}
 ROOK_CEPH_CLUSTER_VERSION="v14.2.10"
 
 rook_version() {
-<<<<<<< HEAD
 	echo "${ROOK_VERSION#v}" | cut -d'.' -f"${1}"
-=======
-	echo "${ROOK_VERSION#?}" | cut -d'.' -f"${1}"
->>>>>>> 818108e7d... cephfs: add snapshot create/delete/restore and clone support
 }
 
 function deploy_rook() {
