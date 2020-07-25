@@ -60,6 +60,7 @@ func createSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to create subvolume snapshot %s %s(%s) in fs %s"), string(snapID), string(volID), err, volOptions.FsName)
 		return err
@@ -89,6 +90,8 @@ func deleteSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cre
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
+
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to delete subvolume snapshot %s %s(%s) in fs %s"), string(snapID), string(volID), err, volOptions.FsName)
 		return err
@@ -128,6 +131,8 @@ func getSnapshotInfo(ctx context.Context, volOptions *volumeOptions, cr *util.Cr
 		&snap,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
+
 	if err != nil {
 		if strings.Contains(err.Error(), snapshotNotFoundErrorString(string(snapID))) {
 			return snapshotInfo{}, util.ErrSnapNotFound{SnapName: string(snapID), Err: err}
@@ -159,6 +164,8 @@ func protectSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.Cr
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
+
 	if err != nil {
 		if strings.Contains(err.Error(), snapshotAlreadyProtectedErrorString(string(snapID))) {
 			return nil
@@ -190,6 +197,8 @@ func unprotectSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
+
 	if err != nil {
 		if strings.Contains(err.Error(), snapshotNotProtectedErrorString(string(snapID))) {
 			return nil
@@ -200,7 +209,8 @@ func unprotectSnapshot(ctx context.Context, volOptions *volumeOptions, cr *util.
 	return nil
 }
 
-func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *util.Credentials, volID, snapID, cloneID volumeID, cloneVolOptions *volumeOptions) error {
+func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *util.Credentials, volID volumeID, snapID volumeID, cloneID volumeID, cloneVolOptions *volumeOptions) error {
+	fmt.Printf("\n\n )))))))))))))))))))))))))))))) I AM IN CLONE SNAPSHOT ")
 	args := []string{
 		"fs",
 		"subvolume",
@@ -219,6 +229,7 @@ func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *uti
 		"-n", cephEntityClientPrefix + cr.ID,
 		"--keyfile=" + cr.KeyFile,
 	}
+	fmt.Printf("\n\n CLONING ARGS: %+v", args)
 
 	if cloneVolOptions.Pool != "" {
 		args = append(args, "--pool_layout", cloneVolOptions.Pool)
@@ -228,6 +239,8 @@ func cloneSnapshot(ctx context.Context, parentVolOptions *volumeOptions, cr *uti
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me( SNAPSHOT CLONE INFO): here is the err:%+v", err)
+
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to clone subvolume snapshot %s %s(%s) in fs %s"), string(cloneID), string(volID), err, parentVolOptions.FsName)
 		if strings.HasPrefix(err.Error(), errNotFoundString) {
@@ -265,6 +278,8 @@ func getcloneInfo(ctx context.Context, volOptions *volumeOptions, cr *util.Crede
 		&clone,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me: here is the err:%+v", err)
+
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to get subvolume clone info %s(%s) in fs %s"), string(volID), err, volOptions.FsName)
 		return clone, err

@@ -19,6 +19,7 @@ package cephfs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	csicommon "github.com/ceph/ceph-csi/internal/csi-common"
@@ -56,20 +57,29 @@ func (cs *ControllerServer) createBackingVolume(
 	sID *snapshotIdentifier,
 	cr *util.Credentials) error {
 	var err error
+	fmt.Printf("\n in Create Backing Volume with sID: %+v", sID)
 	if sID != nil {
+		fmt.Printf("\n =====> in createBackingVolume and I am gonna pass: parentVolOptins: %+v, volOptions:%+v, pvID: %+v, vID and sid: %+v and %+v", parentVolOpt, volOptions, pvID, vID, sID)
 		err = createCloneFromSnapshot(ctx, parentVolOpt, volOptions, pvID, vID, sID, cr)
-		var ecip ErrCloneInProgress
-		if !errors.As(err, &ecip) {
-			return status.Error(codes.Internal, err.Error())
+		fmt.Printf("\n\n\n ERRRROR FROM CREATECLONEFROMSNAPSHOT: err:%+v", err)
+		if err != nil {
+			var ecip ErrCloneInProgress
+			if !errors.As(err, &ecip) {
+				fmt.Printf("\n \t\n I have validated as an error of ecip")
+				return status.Error(codes.Internal, err.Error())
+			}
 		}
 		return err
 	}
+	fmt.Printf("\n ===========******************I am outside CreateCloneFromSnapshot")
+	//Assumption is its a pvc clone
 	if parentVolOpt != nil {
 		err = createCloneFromSubvolume(ctx, volumeID(pvID.FsSubvolName), volumeID(vID.FsSubvolName), volOptions, parentVolOpt, cr)
 		if err != nil {
 			return err
 		}
 		return nil
+
 	}
 
 	if err = createVolume(ctx, volOptions, cr, volumeID(vID.FsSubvolName), volOptions.Size); err != nil {
@@ -88,14 +98,14 @@ func checkContentSource(ctx context.Context, req *csi.CreateVolumeRequest, cr *u
 	case *csi.VolumeContentSource_Snapshot:
 		snapshotID := req.VolumeContentSource.GetSnapshot().GetSnapshotId()
 		var snof util.ErrSnapNotFound
-		_, _, sid, err := newSnapshotOptionsFromID(ctx, snapshotID, cr)
+		volOpt, _, sid, err := newSnapshotOptionsFromID(ctx, snapshotID, cr)
 		if err != nil {
 			if errors.As(err, &snof) {
 				return nil, nil, nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, nil, nil, status.Error(codes.Internal, err.Error())
 		}
-		return nil, nil, sid, nil
+		return volOpt, nil, sid, nil
 	case *csi.VolumeContentSource_Volume:
 		// Find the volume using the provided VolumeID
 		volID := req.VolumeContentSource.GetVolume().GetVolumeId()
@@ -153,6 +163,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("\n\n Successfully parsed ContentSource and parentVol:%+v, pvID:%+v, siD: %+v", parentVol, pvID, sID)
 	var ecip ErrCloneInProgress
 
 	vID, err := checkVolExists(ctx, volOptions, parentVol, pvID, sID, cr)
@@ -162,7 +173,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
+	fmt.Printf("\n This is great.. I am after checkVolExist and vid:%+v ", vID)
 	// TODO return error message if requested vol size greater than found volume return error
 
 	if vID != nil {
@@ -203,6 +214,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	fmt.Printf("\n \n I reserverd the volume and my return is vID :%+v and err:%+v ", vID, err)
 	defer func() {
 		if err != nil {
 			if !errors.As(err, &ecip) {
@@ -215,8 +228,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}()
 
+	fmt.Printf("I am GONNA TAKE LOCK ON PARENT SNAPSHOT")
 	// Take lock on parent snapshot or volume
 	if sID != nil {
+		fmt.Printf("\n =================> \n GETTING LOCK on sid.SnapshotID:%+v", sID.SnapshotID)
 		// lock out parallel delete operations
 		if acquired := cs.SnapshotLocks.TryAcquire(sID.SnapshotID); !acquired {
 			klog.Errorf(util.Log(ctx, util.SnapshotOperationAlreadyExistsFmt), sID.SnapshotID)
@@ -224,6 +239,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		defer cs.VolumeLocks.Release(sID.SnapshotID)
 	} else if pvID != nil {
+		fmt.Printf("\n =================> \n GETTING LOCK on pvID.VolumeID:%+v", pvID.VolumeID)
+
 		if acquired := cs.VolumeLocks.TryAcquire(pvID.VolumeID); !acquired {
 			klog.Errorf(util.Log(ctx, util.VolumeOperationAlreadyExistsFmt), pvID.VolumeID)
 			return nil, status.Errorf(codes.Aborted, util.VolumeOperationAlreadyExistsFmt, pvID.VolumeID)
@@ -239,7 +256,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		return nil, err
 	}
-
+	fmt.Printf("\n \n Hoooooray .. created BACKING VOLUME")
 	util.DebugLog(ctx, "cephfs: successfully created backing volume named %s for request name %s",
 		vID.FsSubvolName, requestName)
 	volumeContext := req.GetParameters()
@@ -410,6 +427,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 // in store
 // nolint:gocyclo // golangci-lint did not catch this earlier, needs to get fixed late
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	fmt.Printf("I am in CreateSnapshot\n")
 	if err := cs.validateSnapshotReq(ctx, req); err != nil {
 		return nil, err
 	}
@@ -433,6 +451,8 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	defer cs.SnapshotLocks.Release(requestName)
 
 	sourceVolID := req.GetSourceVolumeId()
+
+	fmt.Printf("\n\n YOu want me to create a snapshot from volume:%v", sourceVolID)
 	// Find the volume using the provided VolumeID
 	parentVolOptions, vid, err := newVolumeOptionsFromVolID(ctx, sourceVolID, nil, req.GetSecrets())
 	if err != nil {
@@ -446,6 +466,9 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	fmt.Printf("\n I have populated your Source Volume INformation and here it is :%+v", parentVolOptions)
+
 	if clusterData.ClusterID != parentVolOptions.ClusterID {
 		return nil, status.Errorf(codes.InvalidArgument, "requested cluster id %s not matching subvolume cluster id %s", clusterData.ClusterID, parentVolOptions.ClusterID)
 	}
@@ -457,25 +480,30 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	defer cs.VolumeLocks.Release(sourceVolID)
 
 	snapName := req.GetName()
+	fmt.Printf("\n\nMay be requestName and snapname is same: %s, %s\n", requestName, snapName)
 	sid, snapInfo, err := checkSnapExists(ctx, parentVolOptions, vid.FsSubvolName, snapName, cr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	fmt.Printf("\n\nI have retrieved the Snapshot IDentifer:%+v and snapInfo:%+v", sid, snapInfo)
 	// check are we able to retrieve the size of parent
 	// ceph fs subvolume info command got added in 14.2.10 and 15.+
 	// as we are not able to retrieve the parent size we are rejecting the
 	// request to create snapshot
 	var info Subvolume
-	if _, keyPresent := clusterAdditionalInfo[clusterData.ClusterID]; keyPresent {
-		if clusterAdditionalInfo[clusterData.ClusterID].subVolumeInfoSupported == "false" {
+	/*if _, keyPresent := clusterAdditionalInfo[clusterData.ClusterID]; keyPresent {
+		if clusterAdditionalInfo[clusterData.ClusterID].subVolumeInfoSupported {
 			return nil, status.Error(codes.FailedPrecondition, "subvolume info command not supported in current ceph cluster")
 		}
-	}
+	}*/
+	fmt.Printf("\n\nLet me get the subvolume info now")
 	info, err = getSubVolumeInfo(ctx, parentVolOptions, cr, volumeID(vid.FsSubvolName))
+	fmt.Printf("\n \n Awesome I got this subvolumeinfo:%+v and err:%+v", info, err)
 	if err != nil {
-		var eic InvalidCommand
-		if errors.As(err, &eic) {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		//var eic InvalidCommand
+		if errors.Is(err, ErrInvalidCommand) {
+			return nil, status.Error(codes.FailedPrecondition, "subvolume info command not supported in current ceph cluster")
 		}
 		if sid != nil {
 			errDefer := undoSnapReservation(ctx, parentVolOptions, *sid, snapName, cr)
@@ -498,6 +526,8 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 					sid.FsSnapshotName, err)
 			}
 		}
+		fmt.Printf("\n \n  I am gona return snapinfoinfo:%+v and sid:%+v", snapInfo, sid)
+
 		return &csi.CreateSnapshotResponse{
 			Snapshot: &csi.Snapshot{
 				SizeBytes:      int64(info.BytesQuota),
@@ -523,12 +553,13 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 			}
 		}
 	}()
-
+	fmt.Printf("\n \n OK>. As I was not able to see the snapshot I am gonna create one for u")
 	snap := snapshotInfo{}
 	snap, err = doSnapshot(ctx, parentVolOptions, vid.FsSubvolName, sID.FsSnapshotName, cr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	fmt.Printf("I created snapshot for u : here it is :%+v and WE ARE DONE", snap)
 	return &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      int64(info.BytesQuota),
@@ -545,6 +576,8 @@ func doSnapshot(ctx context.Context, volOpt *volumeOptions, subvolumeName, snaps
 	snapID := volumeID(snapshotName)
 	snap := snapshotInfo{}
 	err := createSnapshot(ctx, volOpt, cr, snapID, volID)
+	fmt.Printf("\n I DIDNT fail while creating a snapshot for u err:%+v", err)
+
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to create snapshot %s %v"), snapID, err)
 		return snap, err
@@ -558,6 +591,8 @@ func doSnapshot(ctx context.Context, volOpt *volumeOptions, subvolumeName, snaps
 		}
 	}()
 	snap, err = getSnapshotInfo(ctx, volOpt, cr, snapID, volID)
+
+	fmt.Printf("Here is the snapshot info aftr me created a snapshot for u:%+v, err:%+v", snap, err)
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to get snapshot info %s %v"), snapID, err)
 		return snap, err
@@ -572,6 +607,7 @@ func doSnapshot(ctx context.Context, volOpt *volumeOptions, subvolumeName, snaps
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to protect snapshot %s %v"), snapID, err)
 	}
+	fmt.Printf("\n I have parsed the time and proected snapshot .. so no worries")
 	return snap, err
 }
 

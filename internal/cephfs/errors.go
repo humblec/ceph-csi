@@ -27,6 +27,10 @@ var (
 	ErrNonStaticVolume = errors.New("volume not static")
 	// ErrVolumeNotFound is returned when a subvolume is not found in CephFS.
 	ErrVolumeNotFound = errors.New("volume not found")
+	// ErrInvalidCommand is returned when a command is not known to the cluster
+	ErrInvalidCommand = errors.New("invalid command")
+	//ErrCloneInProgress
+	//ErrCloneInProgress = errors.New("")
 )
 
 // ErrCloneInProgress for cloned subvolume.
@@ -44,6 +48,7 @@ func (e ErrCloneInProgress) Unwrap() error {
 	return e.err
 }
 
+/*
 // InvalidCommand represents invalid command.
 type InvalidCommand struct {
 	err error
@@ -58,3 +63,4 @@ func (e InvalidCommand) Error() string {
 func (e InvalidCommand) Unwrap() error {
 	return e.err
 }
+*/

@@ -18,6 +18,7 @@ package cephfs
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -121,6 +122,7 @@ func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.C
 		"-c", util.CephConfigPath,
 		"-n", cephEntityClientPrefix+cr.ID,
 		"--keyfile="+cr.KeyFile)
+	fmt.Printf("\n \n \n KNOW Me ( GET SUBVOLUME INFO): here is the err:%+v", err)
 
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to get subvolume info for the vol %s(%s)"), string(volID), err)
@@ -128,14 +130,14 @@ func getSubVolumeInfo(ctx context.Context, volOptions *volumeOptions, cr *util.C
 			return info, ErrVolumeNotFound
 		}
 		// Incase the error is other than invalid command return error to the caller.
-		if !strings.Contains(err.Error(), inValidCommmand) {
-			clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = "false"
-			return info, InvalidCommand{err: err}
+		if !strings.Contains(err.Error(), ErrInvalidCommand.Error()) {
+			//clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = "false"
+			return info, ErrInvalidCommand
 		}
 
 		return info, err
 	}
-	clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = "true"
+	clusterAdditionalInfo[volOptions.ClusterID].subVolumeInfoSupported = true
 	return info, nil
 }
 
@@ -147,7 +149,7 @@ type localClusterState struct {
 	subVolumeGroupCreated bool
 	// set "true" if cluster supports subvolume info command if not supported
 	// "false" default value is Empty string.
-	subVolumeInfoSupported string
+	subVolumeInfoSupported bool
 }
 
 func createVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Credentials, volID volumeID, bytesQuota int64) error {
@@ -203,6 +205,8 @@ func createVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Crede
 		ctx,
 		"ceph",
 		args[:]...)
+	fmt.Printf("\n \n \n KNOW Me( CREATE VOLUME): here is the err:%+v", err)
+
 	if err != nil {
 		klog.Errorf(util.Log(ctx, "failed to create subvolume %s(%s) in fs %s"), string(volID), err, volOptions.FsName)
 		return err
@@ -222,7 +226,7 @@ func resizeVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Crede
 	if _, keyPresent = clusterAdditionalInfo[volOptions.ClusterID]; !keyPresent {
 		clusterAdditionalInfo[volOptions.ClusterID] = &localClusterState{}
 	}
-
+	fmt.Printf("\n\\n\n\n\n I AM IN (RESIE VOLUME) with args: volOptions: %+v, volID: %+v, bytesQuota: %v", volOptions, volID, bytesQuota)
 	// resize subvolume when either it's supported, or when corresponding
 	// clusterID key was not present.
 	if clusterAdditionalInfo[volOptions.ClusterID].resizeSupported || !keyPresent {
@@ -240,11 +244,13 @@ func resizeVolume(ctx context.Context, volOptions *volumeOptions, cr *util.Crede
 			"-n", cephEntityClientPrefix + cr.ID,
 			"--keyfile=" + cr.KeyFile,
 		}
+		fmt.Printf("\n\\n\n\n\n I AM IN (RESIE VOLUME) args: %+v", args)
 
 		err := execCommandErr(
 			ctx,
 			"ceph",
 			args[:]...)
+		fmt.Printf("\n \n \n KNOW Me( RESIZE VOLUME): here is the err:%+v", err)
 
 		if err == nil {
 			clusterAdditionalInfo[volOptions.ClusterID].resizeSupported = true

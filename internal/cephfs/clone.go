@@ -127,9 +127,14 @@ func cleanupCloneFromSubvolumeSnapshot(ctx context.Context, volID, cloneID volum
 }
 
 func createCloneFromSnapshot(ctx context.Context, parentVolOpt, volOptions *volumeOptions, pvID, vID *volumeIdentifier, sID *snapshotIdentifier, cr *util.Credentials) error {
-	snapID := volumeID(sID.FsSnapshotName)
-	err := cloneSnapshot(ctx, parentVolOpt, cr, volumeID(pvID.FsSubvolName), snapID, volumeID(vID.FsSubvolName), volOptions)
+	fmt.Printf("\n\n\n BEFORE Retriving the SnapID: \n I am listing the args")
+	fmt.Printf("\n ===========> parentVolOpt: %+v, \n volOptions: %+v, \n  pvID: %+v, \n   vID: %+v \n  Sid: %+v", parentVolOpt, volOptions, pvID, vID, sID)
+	fmt.Printf("\n DEREFERENCE PROPERLY: %s", sID.FsSnapshotName)
+	fmt.Printf("\n\n\n\n\n PARENT VOLUME OPTIONS: %+v", parentVolOpt)
+
+	err := cloneSnapshot(ctx, parentVolOpt, cr, volumeID(sID.FsSubvolName), volumeID(sID.FsSnapshotName), volumeID(vID.FsSubvolName), volOptions)
 	if err != nil {
+		fmt.Printf("\n \n ERRRRRRRRRRRROR: %+v", err)
 		return err
 	}
 	defer func() {
@@ -147,6 +152,7 @@ func createCloneFromSnapshot(ctx context.Context, parentVolOpt, volOptions *volu
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\n CLONE INFO:%+v", clone)
 	if clone.Status.State == cephFSCloneInprogress {
 		return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vID.FsSubvolName)}
 	}
@@ -155,11 +161,13 @@ func createCloneFromSnapshot(ctx context.Context, parentVolOpt, volOptions *volu
 	}
 	if clone.Status.State == cephFSCloneComplete {
 		// This is a work around to fix sizing issue for cloned images
+		fmt.Printf("\n\n 33333333333333333333 I AM GOING TO RESIZE THE VOLUME")
 		err = resizeVolume(ctx, volOptions, cr, volumeID(vID.FsSubvolName), volOptions.Size)
 		if err != nil {
 			klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), vID.FsSubvolName, err)
 			return err
 		}
 	}
+	fmt.Printf("I am returning from createCLONEFROM SNAPSHOT ")
 	return nil
 }
