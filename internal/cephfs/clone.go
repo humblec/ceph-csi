@@ -90,7 +90,14 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 	if clone.Status.State == cephFSCloneFailed {
 		cloneErr = fmt.Errorf("clone %s is in %s state", cloneID, clone.Status.State)
 	}
-
+	if clone.Status.State == cephFSCloneComplete {
+		// This is a work around to fix sizing issue for cloned images
+		err = resizeVolume(ctx, volOpt, cr, cloneID, volOpt.Size)
+		if err != nil {
+			klog.Errorf(util.Log(ctx, "failed to expand volume %s: %v"), cloneID, err)
+			return err
+		}
+	}
 	return nil
 }
 
