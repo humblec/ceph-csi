@@ -953,7 +953,7 @@ func writeDataInPod(pvcPath, appPath string, f *framework.Framework) error {
 	// write data to PVC
 	filePath := app.Spec.Containers[0].VolumeMounts[0].MountPath + "/test"
 
-	_, writeErr := execCommandInPod(f, fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=500", filePath), app.Namespace, &opt)
+	_, writeErr := execCommandInPod(f, fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=300 status=none", filePath), app.Namespace, &opt)
 	Expect(writeErr).Should(BeEmpty())
 
 	err = deletePVCAndApp("", f, pvc, app)
