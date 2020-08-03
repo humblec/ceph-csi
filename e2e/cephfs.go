@@ -590,9 +590,16 @@ var _ = Describe("cephfs", func() {
 						if err != nil {
 							Fail(err.Error())
 						}
-
+						app, err := loadApp(appPath)
+						if err != nil {
+							Fail(err.Error())
+						}
+						err = createPVCAndvalidatePV(f.ClientSet, pvc, deployTimeout)
+						if err != nil {
+							Fail(err.Error())
+						}
 						pvc.Namespace = f.UniqueName
-						wErr := writeDataInPod(pvcPath, appPath, f)
+						wErr := writeDataInPod(app, f)
 						if wErr != nil {
 							Fail(wErr.Error())
 						}
@@ -619,7 +626,7 @@ var _ = Describe("cephfs", func() {
 						}
 
 						// delete parent pvc
-						err = deletePVCAndValidatePV(f.ClientSet, pvc, deployTimeout)
+						err = deletePVCAndApp("", f, pvc, app)
 						if err != nil {
 							Fail(err.Error())
 						}
