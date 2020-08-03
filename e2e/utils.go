@@ -283,7 +283,6 @@ func createCephfsStorageClass(c kubernetes.Interface, f *framework.Framework, en
 	Expect(stdErr).Should(BeEmpty())
 	// remove new line present in fsID
 	fsID = strings.Trim(fsID, "\n")
-
 	if clusterID != "" {
 		fsID = clusterID
 	}
@@ -926,6 +925,25 @@ func listRBDImages(f *framework.Framework) []string {
 		Fail(err.Error())
 	}
 	return imgInfos
+}
+
+func writeDataInPod(app *v1.Pod, f *framework.Framework) error {
+	app.Labels = map[string]string{"app": "write-data-in-pod"}
+	app.Namespace = f.UniqueName
+
+	err := createApp(f.ClientSet, app, deployTimeout)
+	if err != nil {
+		return err
+	}
+	opt := metav1.ListOptions{
+		LabelSelector: "app=write-data-in-pod",
+	}
+	// write data to PVC
+	filePath := app.Spec.Containers[0].VolumeMounts[0].MountPath + "/test"
+
+	_, writeErr := execCommandInPod(f, fmt.Sprintf("dd if=/dev/zero of=%s bs=1M count=300 status=none", filePath), app.Namespace, &opt)
+	Expect(writeErr).Should(BeEmpty())
+	return nil
 }
 
 func checkDataPersist(pvcPath, appPath string, f *framework.Framework) error {
