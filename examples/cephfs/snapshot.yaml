@@ -6,4 +6,4 @@ metadata:
 spec:
   volumeSnapshotClassName: csi-cephfsplugin-snapclass
   source:
-    persistentVolumeClaimName: cephfs-pvc
+    persistentVolumeClaimName: csi-cephfs-pvc

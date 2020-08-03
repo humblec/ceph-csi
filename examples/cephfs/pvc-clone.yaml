@@ -6,7 +6,7 @@ metadata:
 spec:
   storageClassName: csi-cephfs-sc
   dataSource:
-    name: cephfs-pvc
+    name: csi-cephfs-pvc
     kind: PersistentVolumeClaim
   accessModes:
     - ReadWriteOnce
