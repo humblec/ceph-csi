@@ -90,7 +90,8 @@ func createCloneFromSubvolume(ctx context.Context, volID, cloneID volumeID, volO
 		return cloneErr
 	}
 	if clone.Status.State == cephFSCloneInprogress {
-		return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", cloneID)}
+		klog.Errorf(util.Log(ctx, "clone is in progress for %v"), cloneID)
+		return ErrCloneInProgress
 	}
 	if clone.Status.State == cephFSCloneFailed {
 		cloneErr = fmt.Errorf("clone %s is in %s state", cloneID, clone.Status.State)
@@ -132,7 +133,7 @@ func cleanupCloneFromSubvolumeSnapshot(ctx context.Context, volID, cloneID volum
 		return err
 	}
 
-	if snapInfo.Protected == "true" {
+	if snapInfo.Protected == "yes" {
 		err = unprotectSnapshot(ctx, parentVolOpt, cr, snapShotID, volID)
 		if err != nil {
 			klog.Errorf(util.Log(ctx, "failed to unprotect snapshot %s %v"), snapShotID, err)
@@ -155,13 +156,13 @@ func createCloneFromSnapshot(ctx context.Context, parentVolOpt, volOptions *volu
 	}
 	defer func() {
 		if err != nil {
-			var ecip ErrCloneInProgress
-			if !errors.As(err, &ecip) {
+			if !errors.Is(err, ErrCloneInProgress) {
 				if dErr := purgeVolume(ctx, volumeID(vID.FsSubvolName), cr, volOptions, true); dErr != nil {
 					klog.Errorf(util.Log(ctx, "failed to delete volume %s: %v"), vID.FsSubvolName, dErr)
 				}
 			}
 		}
+
 	}()
 	var clone = CloneStatus{}
 	clone, err = getcloneInfo(ctx, volOptions, cr, volumeID(vID.FsSubvolName))
@@ -169,7 +170,7 @@ func createCloneFromSnapshot(ctx context.Context, parentVolOpt, volOptions *volu
 		return err
 	}
 	if clone.Status.State == cephFSCloneInprogress {
-		return ErrCloneInProgress{err: fmt.Errorf("clone is in progress for %v", vID.FsSubvolName)}
+		return ErrCloneInProgress
 	}
 	if clone.Status.State == cephFSCloneFailed {
 		return fmt.Errorf("clone %s is in %s state", vID.FsSubvolName, clone.Status.State)

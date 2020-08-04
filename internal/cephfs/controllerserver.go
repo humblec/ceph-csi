@@ -70,7 +70,7 @@ func (cs *ControllerServer) createBackingVolume(
 
 		err = createCloneFromSnapshot(ctx, parentVolOpt, volOptions, vID, sID, cr)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return err
 		}
 		return err
 	}
@@ -167,11 +167,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, err
 	}
-	var ecip ErrCloneInProgress
-
 	vID, err := checkVolExists(ctx, volOptions, parentVol, pvID, sID, cr)
 	if err != nil {
-		if errors.As(err, &ecip) {
+		if errors.Is(err, ErrCloneInProgress) {
 			return nil, status.Error(codes.Aborted, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -229,7 +227,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	defer func() {
 		if err != nil {
-			if !errors.As(err, &ecip) {
+			if !errors.Is(err, ErrCloneInProgress) {
 				errDefer := undoVolReservation(ctx, volOptions, *vID, secret)
 				if errDefer != nil {
 					klog.Warningf(util.Log(ctx, "failed undoing reservation of volume: %s (%s)"),
@@ -242,7 +240,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Create a volume
 	err = cs.createBackingVolume(ctx, volOptions, parentVol, vID, pvID, sID, cr)
 	if err != nil {
-		if errors.As(err, &ecip) {
+		if errors.Is(err, ErrCloneInProgress) {
 			return nil, status.Error(codes.Aborted, err.Error())
 		}
 		return nil, err

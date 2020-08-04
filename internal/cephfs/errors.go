@@ -39,19 +39,6 @@ var (
 	ErrSnapNotFound = fmt.Errorf("%v", "Error ENOENT")
 	// ErrSnapProtectionExist is returned when the snapshot is already protected
 	ErrSnapProtectionExist = fmt.Errorf("%v", "Error EEXIST")
+	// ErrCloneInProgress is returned when snapshot clone state is `in progress`
+	ErrCloneInProgress = fmt.Errorf("in progress")
 )
-
-// ErrCloneInProgress for cloned subvolume.
-type ErrCloneInProgress struct {
-	err error
-}
-
-// Error returns a user presentable string of the error.
-func (e ErrCloneInProgress) Error() string {
-	return e.err.Error()
-}
-
-// Unwrap returns the encapsulated error of ErrCloneInProgress.
-func (e ErrCloneInProgress) Unwrap() error {
-	return e.err
-}
